@@ -1,0 +1,11 @@
+<component name="libraryTable">
+  <library name="arpack_combined">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/../../../../../../Program Files/Weka-3-8-5/arpack_combined.jar!/" />
+      <root url="jar://$PROJECT_DIR$/../../../../../../Program Files/Weka-3-8-5/core.jar!/" />
+      <root url="jar://$PROJECT_DIR$/../../../../../../Program Files/Weka-3-8-5/mtj.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>
