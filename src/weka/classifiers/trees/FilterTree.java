@@ -7,9 +7,8 @@ import weka.filters.Filter;
 import weka.filters.unsupervised.instance.Randomize;
 
 import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
+import java.util.*;
+import java.util.stream.IntStream;
 
 public class FilterTree extends AbstractClassifier {
 
@@ -20,7 +19,7 @@ public class FilterTree extends AbstractClassifier {
     protected Filter m_Filter = new Randomize();
 
     /** The minimum number of instances used to continue growing the tree */
-    protected int m_minInstances = 100;
+    protected int m_minInstances = 1;
 
     /** The root node of the tree**/
     protected Node rootNode;
@@ -30,6 +29,9 @@ public class FilterTree extends AbstractClassifier {
 
     /** Store computated sorted index of features **/
     protected int sortedFeaturesIndex[][];
+
+    /** Stores class values of instances based on sortFeaturesIndex **/
+    protected double sortedFeatureClassValue[][];
 
     /**
      * Returns the Capabilities of this classifier.
@@ -79,22 +81,6 @@ public class FilterTree extends AbstractClassifier {
      * An interface indicating objects storing node information, implemented by three node info classes.
      */
     private interface NodeInfo extends Serializable {};
-
-    private class  RootNodeInfo implements NodeInfo{
-
-        // The data to be used for expanding the node.
-        protected Instances Data;
-
-
-        /**
-         * Constructs an Root Node object.
-         *
-         * @param data the data to be used for turning this node into an expanded node.
-         */
-        public RootNodeInfo(Instances data) {
-            Data = data;
-        }
-    }
 
     /**
      * Class whose objects represent split nodes.
@@ -174,16 +160,19 @@ public class FilterTree extends AbstractClassifier {
      */
     private class UnexpandedNodeInfo implements NodeInfo {
 
-        // The data to be used for expanding the node.
-        protected Instances Data;
+        protected int StartIndex;
+
+        protected int EndIndex;
+
 
         /**
          * Constructs an UnexpandedNodeInfo object.
          *
-         * @param data the data to be used for turning this node into an expanded node.
+         * @param
          */
-        public UnexpandedNodeInfo(Instances data) {
-            Data = data;
+        public UnexpandedNodeInfo(int startIndex,int endIndex) {
+            StartIndex = startIndex;
+            EndIndex = endIndex;
         }
     }
 
@@ -205,11 +194,6 @@ public class FilterTree extends AbstractClassifier {
         }
     }
 
-
-    protected double calculateEntropy(Node node){
-        return 0;
-    }
-
     protected Node makeLeafNode(Node node){
 
         return null;
@@ -224,40 +208,107 @@ public class FilterTree extends AbstractClassifier {
      */
     protected Node processNode(Node node) {
 
-        Instances instances = ((UnexpandedNodeInfo)node.NodeInfo).Data;
+        UnexpandedNodeInfo newNode = ((UnexpandedNodeInfo)node.NodeInfo);
+        Instance currInstance;
+
+        int amountOfInstancesInNode = newNode.EndIndex - newNode.StartIndex;
+
+        int[][] currentStats;
+
 
         //Checking stopping criteria - Certain Number of instances met, as specified by the user
-        if(instances.size() <= m_minInstances){
+        if((amountOfInstancesInNode + 1) <= m_minInstances){
             return makeLeafNode(node);
         }
 
-        //Iterating through each instance and calculating the entropy
+        Attribute bestAttribute;
+        double bestSplitValue;
+        double maxEntropy;
+
+        //System.out.println(GlobalInstances.get(sortedFeaturesIndex[0][newNode.StartIndex]).classValue());
+
+        //CHECK THE >= OR > ON THE FOR LOOPS
+
+        //Evaluating the split for each attribute
+        for (int i = 0; i < sortedFeaturesIndex.length ; i++) {
+
+            currentStats = new int[2][GlobalInstances.numClasses() + 1];//Stats for a binary split hence the size 2 [0,0,...n_classes,amount_of_instances]
+
+            //Calculating left side statistics
+            currentStats[0][(int)sortedFeatureClassValue[i][newNode.StartIndex]] = 1; //Class value
+            currentStats[0][GlobalInstances.numClasses()] = 1; //Amount of instances in left side statistics
+
+            //Calculating right side statistics
+            for (int j = newNode.StartIndex + 1; j <= newNode.EndIndex ; j++) {
+                currentStats[1][(int)sortedFeatureClassValue[i][j]]++; //Class value
+                currentStats[1][GlobalInstances.numClasses()]++; //Amount of instances in left side statistics
+            }
+
+            //Calculate expected entropy based on all instances in the node.
 
 
+            //Check if it is is the max
+
+
+
+
+        }
 
 
         return null;
 
     }
 
-
-
     public String globalInfo() { return "A tree classifier that local applies a filter at each node."; }
 
 
+    //Move this method
+    private void setup(Instances instances){
+
+        //Setting the list of global instances
+        GlobalInstances = instances;
+        //Creating sorted Attribute Index;
+        int numAttributes = GlobalInstances.numAttributes()  - 1;
+        int numInstances = GlobalInstances.numInstances() - 1 ;
+
+        //Setting global variable
+        sortedFeaturesIndex = new int[numAttributes][numInstances];
+        sortedFeatureClassValue = new double[numAttributes][numInstances];
+
+        for (int i = 0; i < numAttributes; i++) {
+            //Need to initialise a new array each time as it will not work in lambda expression
+            double[] finalFeatureValues = instances.attributeToDoubleArray(i);
+            sortedFeaturesIndex[i] = IntStream.range(0,finalFeatureValues.length)
+                    .boxed()
+                    .sorted((a,b) -> {
+                        if(finalFeatureValues[a] < finalFeatureValues[b]){return -1;}
+                        else if (finalFeatureValues[a] > finalFeatureValues[b]){return 1;}
+                        else {return 0;}
+                    })
+                    .mapToInt(element -> element)
+                    .toArray();
+
+            //This may not work with numerical attributes!!!!!!!
+            sortedFeatureClassValue[i] = Arrays.stream(sortedFeaturesIndex[i])
+                    .map((n) -> (int) GlobalInstances.get(n).classValue())
+                    .mapToDouble(element -> element)
+                    .toArray();
+        }
+    }
 
     @Override
     public void buildClassifier(Instances instances) throws Exception {
 
-        //Setting the list of global instances
-        GlobalInstances = instances;
+        //Remove missing values
 
+        //Setting up initial arrays - called once at when building classifier.
+        setup(instances);
 
         //Creating a node list that has all tree nodes in it before they are finalised.
         ArrayList<Node> nodesInTree = new ArrayList<>();
 
         //Creating rootNode
-        rootNode = new Node(new UnexpandedNodeInfo(instances));
+        rootNode = new Node(new UnexpandedNodeInfo(0,(instances.size()-1))); //May need to change this given size considerations
 
         //Adding node to tree
         nodesInTree.add(rootNode);
@@ -291,3 +342,46 @@ public class FilterTree extends AbstractClassifier {
         runClassifier(new FilterTree(), options);
     }
 }
+
+   /*private class InstanceObj implements Comparator<InstanceObj>{
+
+        int Index;
+        double Value;
+
+        public InstanceObj(int index,double value){
+            super();
+            Index = index;
+            Value = value;
+        }
+
+
+        @Override
+        public int compare(InstanceObj o1, InstanceObj o2) {
+
+            if(o1.Value < o2.Value){
+                return -1;
+            }
+            else if(o1.Value > o2.Value){
+                return 1;
+            }
+            else{
+                return 0;
+            }
+        }
+    }
+    //double[] featureValues;
+        //InstanceObj[] objArr = new InstanceObj[numInstances];
+           /*for (int i = 0; i < numAttributes-1; i++) {
+            featureValues = GlobalInstances.attributeToDoubleArray(i);
+            for (int j = 0; j < numInstances-1; j++) {
+                objArr[j] = new InstanceObj(j,featureValues[j]);
+            }
+
+            objArr[0].compare(objArr[0],objArr[1]);
+
+            Arrays.sort(objArr,0,objArr.length - 1);
+            sortedFeaturesIndex[i] = Arrays.stream(objArr).mapToInt(n -> n.Index).toArray();
+
+
+        }*/
+
