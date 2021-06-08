@@ -1,4 +1,4 @@
-package weka.classifiers.trees;
+package weka.classifiers.meta;
 
 import weka.classifiers.RandomizableClassifier;
 import weka.core.*;
@@ -16,7 +16,7 @@ public class FilterTree extends RandomizableClassifier {
     protected Filter m_Filter = new AllFilter();
 
     /**The minimum number of instances required for splitting**/
-    protected double m_MinInstances = 1.0;//CHANGE TO 2.0
+    protected double m_MinInstances = 2.0;
 
     /**A random number generator**/
     protected Random m_Random;
@@ -133,7 +133,7 @@ public class FilterTree extends RandomizableClassifier {
      */
     private class UnexpandedNodeInfo implements NodeInfo {
 
-       protected Instances Instances;
+        protected Instances Instances;
 
 
         /**
@@ -177,7 +177,7 @@ public class FilterTree extends RandomizableClassifier {
             predictionOutput[(int)i.classValue()]++;
         }
 
-        Utils.normalize(predictionOutput);
+        //Utils.normalize(predictionOutput);
         node.NodeInfo = new LeafNodeInfo(predictionOutput);
         return node;
 
@@ -301,6 +301,7 @@ public class FilterTree extends RandomizableClassifier {
      */
     protected Node splitNode(Node node) throws Exception {
 
+
         UnexpandedNodeInfo newNode = ((UnexpandedNodeInfo)node.NodeInfo);
 
         int[][] currentStats;
@@ -309,10 +310,6 @@ public class FilterTree extends RandomizableClassifier {
         if((newNode.Instances.size()) <= m_MinInstances){
             return makeLeafNode(node);
         }
-
-        //Making a deep copy of the instances so they can be filtered
-        //Instances instancesToFilter = new Instances(newNode.Instances);
-        //Instances instancesToFilter = newNode.Instances;
 
         //Making a deep copy of the data
         Filter filter = Filter.makeCopy(m_Filter);
@@ -349,10 +346,13 @@ public class FilterTree extends RandomizableClassifier {
 
         //double out333 = calculateExpectedEntropyBeforeSplit(newInstances);
 
+
         //Iterating through the attributes
-        for (int i = 0; i < newInstances.numAttributes(); i++) {
+        for (int i = 0; i < newInstances.numAttributes() - 1; i++) {
 
             newInstances.sort(i);//Sorting Attributes
+
+
 
             currentStats = createSufficientStatistics(newInstances);//Creating the current sufficient statistics
 
@@ -422,10 +422,13 @@ public class FilterTree extends RandomizableClassifier {
         ((SplitNodeInfo)node.NodeInfo).Right = splitNode(new Node(new UnexpandedNodeInfo(subsets[1])));
 
         return node;
+
     }
 
     @Override
     public void buildClassifier(Instances instances) throws Exception {
+
+
 
         //Setting random seed of random object
         m_Random = instances.getRandomNumberGenerator(getSeed());
@@ -435,42 +438,75 @@ public class FilterTree extends RandomizableClassifier {
 
         //Processing Node
         m_RootNode = splitNode(newNode);
-
-
-    }
-
-    private void travTree(Node node){
-
-        //Getting the root node to start tree traversal
-        Node currNode = node;
-
-        if(currNode.NodeInfo instanceof LeafNodeInfo){
-            System.out.println("leafNode");
-            System.out.println(((LeafNodeInfo)currNode.NodeInfo).Prediction);
-        }
-
-        System.out.println("left-----------");
-        travTree(((SplitNodeInfo)currNode.NodeInfo).Left);
-        System.out.println("left-----------");
-        System.out.println("right----------");
-        travTree(((SplitNodeInfo)currNode.NodeInfo).Right);
-        System.out.println("right----------");
-
     }
 
     /*@Override
     public double[][] distributionsForInstances(Instances batch) throws Exception {
+
+
+
         return super.distributionsForInstances(batch);
     }*/
 
+    /*@Override
+    public boolean implementsMoreEfficientBatchPrediction() {
+        return true;
+    }*/
 
-    public double[] distributionsForInstances(Instance instance) throws Exception {
+    protected double [][] traverseTreeBatch(Node node,Instances instances) throws Exception {
 
-        double[] hllo = new double[]{0,1,0};
-        return hllo;
+        Instances filteredInstances;
+        Instances newInstances;
+        Filter currentNodeFilter;
+        SplitNodeInfo currNode;
+
+        double[][] preds = new double[instances.size()][];
+
+        if(node.NodeInfo instanceof LeafNodeInfo){
+            for (int i = 0; i < preds.length; i++) {
+                preds[i] = ((LeafNodeInfo)node.NodeInfo).Prediction;
+            }
+            return preds;
+        }
+
+        //Getting info on current node
+        currNode = ((SplitNodeInfo)node.NodeInfo);
+
+        //It is a splitNode as leaf node should have been returned, so it is safe to cast
+        currentNodeFilter = ((SplitNodeInfo) node.NodeInfo).Filter;
+
+        //Setting up input format of filter
+        currentNodeFilter.setInputFormat(instances);
+        //Filtering the instances based on a filter specified by the user
+        newInstances = Filter.useFilter(instances,currentNodeFilter);
+
+        //Go through each instance and send down a branch
+        Instances[] subsets = new Instances[2];
+        subsets[0] = new Instances(instances, instances.numInstances());
+        subsets[1] = new Instances(instances, instances.numInstances());
+
+        //Calculating what branch to send instance into
+        for (int i = 0; i < newInstances.size(); i++) {
+            subsets[newInstances.get(i).value(currNode.SplitAttribute) < currNode.SplitValue ? 0 : 1].add(instances.get(i));
+        }
+
+        //Process left side of tree
+        double outLeft[][] = traverseTreeBatch(currNode.Left,subsets[0]);
+
+        //Process right side of tree
+        double outRight[][] = traverseTreeBatch(currNode.Right,subsets[1]);
+
+        return null;
+
+    }
+
+
+
+    @Override
+    public double[] distributionForInstance(Instance instance) throws Exception {
 
         //Getting the root node to start tree traversal
-        /*Node currNode = m_RootNode;
+        Node currNode = m_RootNode;
 
         //If root is leaf node return prediction
         if(currNode.NodeInfo instanceof LeafNodeInfo){
@@ -478,17 +514,20 @@ public class FilterTree extends RandomizableClassifier {
         }
 
         //Traversing the tree
-        return traverseTree(currNode,instance);*/
+        return traverseTreeInstance(currNode,instance);
     }
 
-    protected double[] traverseTree(Node node,Instance instance) throws Exception {
+    protected double[] traverseTreeInstance(Node node,Instance instance) throws Exception {
 
         Instance filteredInstance;
         Filter currentNodeFilter;
         double[] pred = null;
 
+        if(node.NodeInfo instanceof LeafNodeInfo){
+            return ((LeafNodeInfo)node.NodeInfo).Prediction;
+        }
 
-
+        //It is a splitNode as leaf node should have been returned, so it is safe to cast
         SplitNodeInfo currNode = ((SplitNodeInfo) node.NodeInfo);
 
         //Getting filter to use on the instance values
@@ -496,24 +535,60 @@ public class FilterTree extends RandomizableClassifier {
 
         //Filtering the instance to be checked
         currentNodeFilter.input(instance);
+        currentNodeFilter.batchFinished();
         filteredInstance = currentNodeFilter.output();
 
         if(filteredInstance.value(currNode.SplitAttribute) < currNode.SplitValue){
             //Traversing down left branch
-            return traverseTree(currNode.Left,instance);
+            return traverseTreeInstance(currNode.Left,instance);
         }
         else{
             //Traversing down right branch
-            return traverseTree(currNode.Right,instance);
-
+            return traverseTreeInstance(currNode.Right,instance);
         }
     }
 
+    /**
+     * Method that returns a textual description of the subtree attached to the given node. The description is
+     * returned in a string buffer.
+     *
+     * @param stringBuffer buffer to hold the description
+     * @param node the node whose subtree is to be described
+     * @param levelString the level of the node in the overall tree structure
+     */
+    protected void toString(StringBuffer stringBuffer, Node node, String levelString) {
+
+        if (node.NodeInfo instanceof SplitNodeInfo) {
+
+            stringBuffer.append("\n" + levelString + ((SplitNodeInfo) node.NodeInfo).SplitAttribute.name() + " < " + Utils.doubleToString(((SplitNodeInfo) node.NodeInfo).SplitValue, getNumDecimalPlaces()));
+            toString(stringBuffer, ((SplitNodeInfo) node.NodeInfo).Left, levelString + "|   ");
+            stringBuffer.append("\n" + levelString + ((SplitNodeInfo) node.NodeInfo).SplitAttribute.name() + " >= " +
+                    Utils.doubleToString(((SplitNodeInfo) node.NodeInfo).SplitValue, getNumDecimalPlaces()));
+            toString(stringBuffer, ((SplitNodeInfo) node.NodeInfo).Right, levelString + "|   ");
+        } else {
+            double[] dist = ((LeafNodeInfo) node.NodeInfo).Prediction;
+            stringBuffer.append(":");
+            for (double pred : dist) {
+                stringBuffer.append(" " + Utils.doubleToString(pred, getNumDecimalPlaces()));
+            }
+        }
+    }
+
+    /**
+     * Method that returns a textual description of the classifier.
+     *
+     * @return the textual description as a string
+     */
+    public String toString() {
+        if (m_RootNode == null) {
+            return "FilterTree has not been built yet";
+        }
+        StringBuffer stringBuffer = new StringBuffer();
+        toString(stringBuffer, m_RootNode, "");
+        return stringBuffer.toString();
+    }
 
 
-    /*public boolean implementsMoreEfficientBatchPrediction() {
-        return true;
-    }*/
 
     /**
      * The main method used for running this filter from the command-line interface.
