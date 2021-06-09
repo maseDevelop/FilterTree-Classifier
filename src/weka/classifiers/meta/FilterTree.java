@@ -6,6 +6,9 @@ import weka.filters.AllFilter;
 import weka.filters.Filter;
 import java.io.Serializable;
 import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 public class FilterTree extends RandomizableClassifier {
 
@@ -419,8 +422,17 @@ public class FilterTree extends RandomizableClassifier {
             subsets[FilteredInstances.get(i).value(bestAttribute) < bestSplitValue ? 0 : 1].add(newNode.Instances.get(i));
         }
 
+
         //Transforming node into a split node
         node.NodeInfo = new SplitNodeInfo(bestAttribute,bestSplitValue,filter);
+
+        //Clean up
+        bestAttribute = null;
+        FilteredInstances = null;
+        newInstances = null;
+        filter = null;
+        currentStats = null;
+        newNode = null;
 
         //Process left side of tree
         ((SplitNodeInfo)node.NodeInfo).Left = splitNode(new Node(new UnexpandedNodeInfo(subsets[0])));
@@ -452,7 +464,23 @@ public class FilterTree extends RandomizableClassifier {
 
     /*@Override
     public double[][] distributionsForInstances(Instances batch) throws Exception {
-        return super.distributionsForInstances(batch);
+
+        //If root is leaf node return prediction
+        if(m_RootNode.NodeInfo instanceof LeafNodeInfo){
+            double[][] outArray = new double[batch.size()][];
+            for (int i = 0; i < batch.size(); i++) {
+                outArray[i] = ((LeafNodeInfo)m_RootNode.NodeInfo).Prediction;
+            }
+            return outArray;
+        }
+
+        int[] out = IntStream.range(0, batch.size()).toArray();
+        double[][] batchPredictions = new double[batch.size()][];
+
+        //Traversing the tree
+        traverseTreeBatch(m_RootNode,out,batch,batchPredictions);
+
+        return batchPredictions;
     }
 
     @Override
@@ -460,55 +488,47 @@ public class FilterTree extends RandomizableClassifier {
         return true;
     }
 
+    protected void traverseTreeBatch(Node node, int[] indexes, Instances batch, double[][] predictionsArray) throws Exception {
 
-    protected double [][] traverseTreeBatch(Node node,Instances instances) throws Exception {
+        double[][] outArr = new double[indexes.length][];
 
-
-        double[][][] out = new double[instances.size()][][];
-
-        Instances filteredInstances;
-        Instances newInstances;
-        Filter currentNodeFilter;
-        SplitNodeInfo currNode;
-
-        double[][] preds = new double[instances.size()][];
-
+        //If root is leaf node return prediction
         if(node.NodeInfo instanceof LeafNodeInfo){
-            for (int i = 0; i < preds.length; i++) {
-                preds[i] = ((LeafNodeInfo)node.NodeInfo).Prediction;
-            }
-            return preds;
-        }
 
-        //Getting info on current node
-        currNode = ((SplitNodeInfo)node.NodeInfo);
+            for (int i = 0; i < indexes.length; i++) {
+                predictionsArray[indexes[i]] = ((LeafNodeInfo)node.NodeInfo).Prediction;
+            }
+        }
 
         //It is a splitNode as leaf node should have been returned, so it is safe to cast
-        currentNodeFilter = ((SplitNodeInfo) node.NodeInfo).Filter;
+        SplitNodeInfo currNode = ((SplitNodeInfo) node.NodeInfo);
 
         //Setting up input format of filter
-        currentNodeFilter.setInputFormat(instances);
+        currNode.Filter.setInputFormat(batch);
         //Filtering the instances based on a filter specified by the user
-        newInstances = Filter.useFilter(instances,currentNodeFilter);
+        Instances FilteredInstances = Filter.useFilter(batch,currNode.Filter);
 
-        //Go through each instance and send down a branch
+        //Splitting data into two subsets base on the filter value
         Instances[] subsets = new Instances[2];
-        subsets[0] = new Instances(instances, instances.numInstances());
-        subsets[1] = new Instances(instances, instances.numInstances());
+        subsets[0] = new Instances(batch, batch.numInstances());
+        subsets[1] = new Instances(batch, batch.numInstances());
 
-        //Calculating what branch to send instance into
-        for (int i = 0; i < newInstances.size(); i++) {
-            subsets[newInstances.get(i).value(currNode.SplitAttribute) < currNode.SplitValue ? 0 : 1].add(instances.get(i));
+        HashMap<Integer,ArrayList<Integer>> intSubsets = new HashMap<>();
+
+
+        int branch;
+        //Calculating what subset to send instance into
+        for (int i = 0; i < batch.size(); i++) {
+            branch = FilteredInstances.get(i).value(currNode.SplitAttribute) < currNode.SplitValue ? 0 : 1;
+            subsets[branch].add(batch.get(i));
+            intSubsets.get(branch).add(i);
         }
 
-        //Process left side of tree
-        double outLeft[][] = traverseTreeBatch(currNode.Left,subsets[0]);
 
-        //Process right side of tree
-        double outRight[][] = traverseTreeBatch(currNode.Right,subsets[1]);
-
-        return null;
-
+        //Going down the left side
+        traverseTreeBatch(currNode.Left,intSubsets.get(0).stream().mapToInt(Integer::intValue).toArray(), subsets[0],predictionsArray);
+        //Going down the right side
+        traverseTreeBatch(currNode.Right,intSubsets.get(1).stream().mapToInt(Integer::intValue).toArray(), subsets[1],predictionsArray);
     }*/
 
 
