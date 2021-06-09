@@ -54,7 +54,7 @@ public class FilterTree extends RandomizableClassifier {
      * displaying in the explorer/experimenter gui
      */
     public String globalInfo() {
-        return "Class for building a classification tree with local filter models for definining splits.";
+        return "Class for building a classification tree with local filter models for defining splits.";
     }
 
     /**
@@ -118,13 +118,18 @@ public class FilterTree extends RandomizableClassifier {
         // The array of predictions
         protected double[] Prediction;
 
+        //Stores class count for toString tree output
+        protected double[] ClassCountForString;
+
         /**
          * Constructs a LeafNodeInfo object.
          *
          * @param prediction the array of predictions to store at this node
+         * @param classCount the count of each class
          */
-        public LeafNodeInfo(double[] prediction) {
+        public LeafNodeInfo(double[] prediction, double[] classCount) {
             Prediction = prediction;
+            ClassCountForString = classCount;
         }
     }
 
@@ -165,40 +170,59 @@ public class FilterTree extends RandomizableClassifier {
     }
 
 
-
+    /**
+     * Constructs a leaf node from an unexpanded node
+     *
+     * @param node that is turned into a leaf node
+     * @return the newly constructed leaf node with the relevant prediction data
+     */
     protected Node makeLeafNode(Node node){
 
         Instances instances = ((UnexpandedNodeInfo)node.NodeInfo).Instances;
 
         double[] predictionOutput = new double[instances.numClasses()];
+        double[] classCount = new double[instances.numClasses()];
 
         //Calculating the class distribution at the node
         for(Instance i: instances){
             predictionOutput[(int)i.classValue()]++;
+            classCount[(int)i.classValue()]++;
         }
-
-        //Utils.normalize(predictionOutput);
-        node.NodeInfo = new LeafNodeInfo(predictionOutput);
+        Utils.normalize(predictionOutput);
+        node.NodeInfo = new LeafNodeInfo(predictionOutput,classCount);
         return node;
 
     }
 
+    /**
+     * Creates a sufficient statistics 2D array based on the instances given to the method
+     * it stores the class values and the count of the class values each side of a binary split
+     * @param newInstances is what is used to create the sufficient statistics array
+     * @return 2D array of size to corresponding to class values either side of a binary split
+     */
     protected int[][] createSufficientStatistics(Instances newInstances){
         int[][] currentStats = new int[2][newInstances.numClasses()+1];
 
-        //Calculating left side statistics
+        //Calculating left side statistics, initially this will be the first value
         currentStats[0][(int)newInstances.get(0).classValue()]++;
-        currentStats[0][newInstances.numClasses()]++; //Amount of instances in left side statistics
+        currentStats[0][newInstances.numClasses()]++; //Amount of instances in left side of tree
 
         //Calculating the right side statistics
         for (int j = 1; j < newInstances.size() ; j++) {
             currentStats[1][(int)newInstances.get(j).classValue()]++;
-            currentStats[1][newInstances.numClasses()]++;
+            currentStats[1][newInstances.numClasses()]++;//Amount of instances on the right side of the tree
         }
 
         return currentStats;
     }
 
+    /**
+     * Moves up the sufficient statistics array from left to right,
+     * each time placing one class value from the right side on the left
+     * @param instanceToMove instance to move from right side of the split to left side of the split
+     * @param newInstances the instances to interact with
+     * @param currentStats the current Sufficient statistics array
+     */
     protected void updateSufficientStatistics(Instance instanceToMove,Instances newInstances, int[][] currentStats){
 
         //Removing from the right side of tree statistics
@@ -210,7 +234,7 @@ public class FilterTree extends RandomizableClassifier {
         currentStats[0][newInstances.numClasses()]++;
     }
 
-    protected double calculateEntropy(int[] inputStats){
+    /*protected double calculateEntropy(int[] inputStats){
 
         double finalVal = 0.0,out1,out2;
         for (int i = 0; i < inputStats.length - 1; i++) {
@@ -222,8 +246,14 @@ public class FilterTree extends RandomizableClassifier {
         //Returning Entropy for given probabilities
         return finalVal;
 
-    }
+    }*/
 
+    /**
+     * Used to calculate the entropy of a node before a split
+     *
+     * @param instances the instance of a node to calculate the expected entropy
+     * @return a value of entropy for the instance given
+     */
     protected double calculateExpectedEntropyBeforeSplit(Instances instances){
 
         int[] classValueCount = new int[instances.numClasses()];
@@ -233,16 +263,12 @@ public class FilterTree extends RandomizableClassifier {
         int size = instances.size();
         double finalValue = 0.0;
 
-        /*int[] classValueCount = new int[]{9,5};
-        double[] probValues = new double[2];
-        double[] entropyValues = new double[2];
-        double[] outputValues = new double[2];
-        int size = 14;*/
-
+        //getting a class value count
         for (Instance i: instances) {
             classValueCount[((int) i.classValue())]++;
         }
 
+        //Calculating entropy of each class
         for (int i = 0; i < classValueCount.length; i++) {
             probValues[i] = (double) classValueCount[i]/size;
             if(probValues[i] != 0.0){
@@ -251,7 +277,7 @@ public class FilterTree extends RandomizableClassifier {
             }
         }
 
-        //Calculating expected entropy
+        //Calculating entropy for all classes
         for (int i = 0; i < outputValues.length; i++) {
             finalValue += outputValues[i];
         }
@@ -259,12 +285,17 @@ public class FilterTree extends RandomizableClassifier {
         return finalValue;
     }
 
+    /**
+     * Used to calculate expected entropy for a certain binary split
+     *
+     * @param inputStats the input sufficent statistics
+     * @return a entropy value for the given statistics
+     */
     protected double calculateExpectedEntropy(int[][] inputStats){
 
-        //double[] classes = new double[inputStats[0].length - 1];
-        double left = 0.0,out1Left,out2Left,probLeft;
+        double left = 0.0,out1Left,probLeft;
         int totalLeft = inputStats[0][inputStats[0].length - 1];
-        double right = 0.0,out1Right,out2Right,probRight;
+        double right = 0.0,out1Right,probRight;
         int totalRight = inputStats[1][inputStats[1].length - 1 ];
         int totalInstances = totalLeft + totalRight;
 
@@ -324,17 +355,8 @@ public class FilterTree extends RandomizableClassifier {
         //Filtering the instances based on a filter specified by the user
         Instances newInstances = Filter.useFilter(newNode.Instances,filter);
 
-        /*System.out.println("first:" + newNode.Instances.get(0));
-        System.out.println("second: " + newInstances.get(0));
-        System.out.println("first:" + newNode.Instances.get(2));
-        System.out.println("second: " + newInstances.get(2));
-
-        filter.input(newNode.Instances.get(2));
-        filter.batchFinished();
-        Instance instance1 = filter.output();
-
-        System.out.println("first filter: " + newNode.Instances.get(2));
-        System.out.println("second filter: " + instance1);*/
+        //Creating new a copy of the instances as when they get sorted it messes up the index pairing
+        Instances FilteredInstances = new Instances(newInstances);
 
         double bestSplitValue = 0; //best Split value for the node
         double minExpectedEntropy = 0.0; //Best Expected entropy for a split -> want to minimise this
@@ -342,17 +364,14 @@ public class FilterTree extends RandomizableClassifier {
         double newSplitValue; //Current split value
         Attribute bestAttribute = null;
         boolean lock = false;
+
+        //Calculating the entropy of the node - used to calculate information gain
         double entropyOfCurrentNode = calculateExpectedEntropyBeforeSplit(newInstances);
-
-        //double out333 = calculateExpectedEntropyBeforeSplit(newInstances);
-
 
         //Iterating through the attributes
         for (int i = 0; i < newInstances.numAttributes() - 1; i++) {
 
             newInstances.sort(i);//Sorting Attributes
-
-
 
             currentStats = createSufficientStatistics(newInstances);//Creating the current sufficient statistics
 
@@ -361,6 +380,7 @@ public class FilterTree extends RandomizableClassifier {
             //Going through the attribute values and working out the split points
             for (int j = 1; j < newInstances.size(); j++) {
 
+                //Calculating current expected entropy based on the current sufficient statistics
                 currentExpectedEntropy = calculateExpectedEntropy(currentStats);
 
                 if((currentExpectedEntropy < minExpectedEntropy) || (!lock)){
@@ -394,22 +414,9 @@ public class FilterTree extends RandomizableClassifier {
         subsets[0] = new Instances(newNode.Instances, newNode.Instances.numInstances());
         subsets[1] = new Instances(newNode.Instances, newNode.Instances.numInstances());
 
-        //CHECK THIS
-        //Instance testInstance;
-
-        //Iterating over the instance and determining the correct subset
-        /*for (Instance instance : newNode.Instances) {
-
-            //Applying filter to work out the best split
-            filter.input(instance);
-            testInstance = filter.output();
-
-            subsets[testInstance.value(bestAttribute) < bestSplitValue ? 0 : 1].add(instance);
-        }*/
-
         //Calculating what subset to send instance into
         for (int i = 0; i < newNode.Instances.size(); i++) {
-            subsets[newInstances.get(i).value(bestAttribute) < bestSplitValue ? 0 : 1].add(newNode.Instances.get(i));
+            subsets[FilteredInstances.get(i).value(bestAttribute) < bestSplitValue ? 0 : 1].add(newNode.Instances.get(i));
         }
 
         //Transforming node into a split node
@@ -425,10 +432,13 @@ public class FilterTree extends RandomizableClassifier {
 
     }
 
+    /**
+     * Builds the classifier
+     * @param instances that are used to build the classifier
+     * @throws Exception
+     */
     @Override
     public void buildClassifier(Instances instances) throws Exception {
-
-
 
         //Setting random seed of random object
         m_Random = instances.getRandomNumberGenerator(getSeed());
@@ -442,18 +452,19 @@ public class FilterTree extends RandomizableClassifier {
 
     /*@Override
     public double[][] distributionsForInstances(Instances batch) throws Exception {
-
-
-
         return super.distributionsForInstances(batch);
-    }*/
+    }
 
-    /*@Override
+    @Override
     public boolean implementsMoreEfficientBatchPrediction() {
         return true;
-    }*/
+    }
+
 
     protected double [][] traverseTreeBatch(Node node,Instances instances) throws Exception {
+
+
+        double[][][] out = new double[instances.size()][][];
 
         Instances filteredInstances;
         Instances newInstances;
@@ -498,10 +509,15 @@ public class FilterTree extends RandomizableClassifier {
 
         return null;
 
-    }
+    }*/
 
 
-
+    /**
+     * Gets the class distribution for an instance
+     * @param instance the instance you want to find a prediction for
+     * @return array of based on class distribution of the node
+     * @throws Exception
+     */
     @Override
     public double[] distributionForInstance(Instance instance) throws Exception {
 
@@ -517,11 +533,18 @@ public class FilterTree extends RandomizableClassifier {
         return traverseTreeInstance(currNode,instance);
     }
 
+
+    /**
+     * Recursively traverses a tree in order to get a leaf node
+     * @param node the node to search for a prediction
+     * @param instance the instance value to search for a prediction with
+     * @return a prediction based on the class distribution from a leaf node
+     * @throws Exception
+     */
     protected double[] traverseTreeInstance(Node node,Instance instance) throws Exception {
 
         Instance filteredInstance;
         Filter currentNodeFilter;
-        double[] pred = null;
 
         if(node.NodeInfo instanceof LeafNodeInfo){
             return ((LeafNodeInfo)node.NodeInfo).Prediction;
@@ -566,7 +589,7 @@ public class FilterTree extends RandomizableClassifier {
                     Utils.doubleToString(((SplitNodeInfo) node.NodeInfo).SplitValue, getNumDecimalPlaces()));
             toString(stringBuffer, ((SplitNodeInfo) node.NodeInfo).Right, levelString + "|   ");
         } else {
-            double[] dist = ((LeafNodeInfo) node.NodeInfo).Prediction;
+            double[] dist = ((LeafNodeInfo) node.NodeInfo).ClassCountForString;
             stringBuffer.append(":");
             for (double pred : dist) {
                 stringBuffer.append(" " + Utils.doubleToString(pred, getNumDecimalPlaces()));
@@ -581,14 +604,12 @@ public class FilterTree extends RandomizableClassifier {
      */
     public String toString() {
         if (m_RootNode == null) {
-            return "FilterTree has not been built yet";
+            return "FilterTree: has not been built yet";
         }
         StringBuffer stringBuffer = new StringBuffer();
         toString(stringBuffer, m_RootNode, "");
         return stringBuffer.toString();
     }
-
-
 
     /**
      * The main method used for running this filter from the command-line interface.
