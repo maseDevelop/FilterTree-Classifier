@@ -234,20 +234,6 @@ public class FilterTree extends RandomizableClassifier {
         currentStats[0][newInstances.numClasses()]++;
     }
 
-    /*protected double calculateEntropy(int[] inputStats){
-
-        double finalVal = 0.0,out1,out2;
-        for (int i = 0; i < inputStats.length - 1; i++) {
-            out1 = Math.log((double) inputStats[i]/inputStats[inputStats.length - 1])/Math.log(2);
-            out2 = (double) -inputStats[i]/inputStats[inputStats.length - 1];
-            finalVal += out2 * out1;
-        }
-
-        //Returning Entropy for given probabilities
-        return finalVal;
-
-    }*/
-
     /**
      * Used to calculate the entropy of a node before a split
      *
@@ -472,30 +458,11 @@ public class FilterTree extends RandomizableClassifier {
         m_RootNode = splitNode(newNode);
     }
 
-    /*@Override
+    @Override
     public double[][] distributionsForInstances(Instances batch) throws Exception {
-        System.out.println("in batch");
+        
+        return traverseTreeBatch(m_RootNode,batch);
 
-        for (int i = 0; i < batch.size(); i++) {
-            System.out.println(batch.get(i).toString());
-        }
-
-
-        double[][] out = traverseTreeBatch(m_RootNode,batch);
-
-        System.out.println("output batch");
-        for (int i = 0; i < out.length; i++) {
-            System.out.println(Arrays.toString(out[i]));
-
-        }
-
-        System.out.println("--------------------");
-
-        for (int i = 0; i < batch.size(); i++) {
-            out[i] = new double[]{0};
-        }
-
-       return out;
     }
 
     @Override
@@ -510,10 +477,9 @@ public class FilterTree extends RandomizableClassifier {
         //If root is leaf node return prediction
         if(node.NodeInfo instanceof LeafNodeInfo){
             for (int i = 0; i < batch.size(); i++) {
-                System.out.println("instance: " + batch.get(i).toString());
-                System.out.println("intancd output: " + Arrays.toString(((LeafNodeInfo) node.NodeInfo).Prediction));
-                //outArr[i] = ((LeafNodeInfo)node.NodeInfo).Prediction;
-                outArr[i] = new double[]{ batch.get(i).value(0)};
+
+                outArr[i] = ((LeafNodeInfo)node.NodeInfo).Prediction;
+
             }
             return outArr;
         }
@@ -522,7 +488,7 @@ public class FilterTree extends RandomizableClassifier {
         SplitNodeInfo currNode = ((SplitNodeInfo) node.NodeInfo);
 
         //Setting up input format of filter
-        currNode.Filter.setInputFormat(batch);
+        //currNode.Filter.setInputFormat(batch);
         //Filtering the instances based on a filter specified by the user
         Instances FilteredInstances = Filter.useFilter(batch,currNode.Filter);
 
@@ -543,12 +509,7 @@ public class FilterTree extends RandomizableClassifier {
             }
         }
 
-
-
         //Splitting data into two subsets base on the filter value
-
-
-
 
         //Clean up
         FilteredInstances = null;
@@ -583,9 +544,8 @@ public class FilterTree extends RandomizableClassifier {
                 rightCount++;
             }
         }
-
         return outArr;
-    }*/
+    }
 
 
     /**
