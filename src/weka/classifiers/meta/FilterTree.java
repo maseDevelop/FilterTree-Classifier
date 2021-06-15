@@ -6,9 +6,6 @@ import weka.filters.AllFilter;
 import weka.filters.Filter;
 import java.io.Serializable;
 import java.util.*;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
-import java.util.stream.Stream;
 
 public class FilterTree extends RandomizableClassifier {
 
@@ -342,6 +339,10 @@ public class FilterTree extends RandomizableClassifier {
 
         //Checking stopping criteria - Certain Number of instances met, as specified by the user
         if((newNode.Instances.size()) <= m_MinInstances){
+
+            currentStats = null;
+            newNode = null;
+
             return makeLeafNode(node);
         }
 
@@ -409,6 +410,15 @@ public class FilterTree extends RandomizableClassifier {
         //Check stop criterion again if information gain has not increased
         double informationGain = entropyOfCurrentNode - minExpectedEntropy;
         if(informationGain <= 0.0 || bestAttribute == null){
+
+            //Clean up
+            bestAttribute = null;
+            FilteredInstances = null;
+            newInstances = null;
+            filter = null;
+            currentStats = null;
+            newNode = null;
+
             return makeLeafNode(node);
         }
 
@@ -464,23 +474,28 @@ public class FilterTree extends RandomizableClassifier {
 
     /*@Override
     public double[][] distributionsForInstances(Instances batch) throws Exception {
+        System.out.println("in batch");
 
-        //If root is leaf node return prediction
-        if(m_RootNode.NodeInfo instanceof LeafNodeInfo){
-            double[][] outArray = new double[batch.size()][];
-            for (int i = 0; i < batch.size(); i++) {
-                outArray[i] = ((LeafNodeInfo)m_RootNode.NodeInfo).Prediction;
-            }
-            return outArray;
+        for (int i = 0; i < batch.size(); i++) {
+            System.out.println(batch.get(i).toString());
         }
 
-        int[] out = IntStream.range(0, batch.size()).toArray();
-        double[][] batchPredictions = new double[batch.size()][];
 
-        //Traversing the tree
-        traverseTreeBatch(m_RootNode,out,batch,batchPredictions);
+        double[][] out = traverseTreeBatch(m_RootNode,batch);
 
-        return batchPredictions;
+        System.out.println("output batch");
+        for (int i = 0; i < out.length; i++) {
+            System.out.println(Arrays.toString(out[i]));
+
+        }
+
+        System.out.println("--------------------");
+
+        for (int i = 0; i < batch.size(); i++) {
+            out[i] = new double[]{0};
+        }
+
+       return out;
     }
 
     @Override
@@ -488,16 +503,19 @@ public class FilterTree extends RandomizableClassifier {
         return true;
     }
 
-    protected void traverseTreeBatch(Node node, int[] indexes, Instances batch, double[][] predictionsArray) throws Exception {
+    protected double[][] traverseTreeBatch(Node node, Instances batch) throws Exception {
 
-        double[][] outArr = new double[indexes.length][];
+        double[][] outArr = new double[batch.size()][];
 
         //If root is leaf node return prediction
         if(node.NodeInfo instanceof LeafNodeInfo){
-
-            for (int i = 0; i < indexes.length; i++) {
-                predictionsArray[indexes[i]] = ((LeafNodeInfo)node.NodeInfo).Prediction;
+            for (int i = 0; i < batch.size(); i++) {
+                System.out.println("instance: " + batch.get(i).toString());
+                System.out.println("intancd output: " + Arrays.toString(((LeafNodeInfo) node.NodeInfo).Prediction));
+                //outArr[i] = ((LeafNodeInfo)node.NodeInfo).Prediction;
+                outArr[i] = new double[]{ batch.get(i).value(0)};
             }
+            return outArr;
         }
 
         //It is a splitNode as leaf node should have been returned, so it is safe to cast
@@ -508,27 +526,65 @@ public class FilterTree extends RandomizableClassifier {
         //Filtering the instances based on a filter specified by the user
         Instances FilteredInstances = Filter.useFilter(batch,currNode.Filter);
 
-        //Splitting data into two subsets base on the filter value
+        //Decide which branch each element goes down
+        boolean[] leftSideBoolean = new boolean[batch.size()];
+
         Instances[] subsets = new Instances[2];
         subsets[0] = new Instances(batch, batch.numInstances());
         subsets[1] = new Instances(batch, batch.numInstances());
 
-        HashMap<Integer,ArrayList<Integer>> intSubsets = new HashMap<>();
-
-
-        int branch;
         //Calculating what subset to send instance into
-        for (int i = 0; i < batch.size(); i++) {
-            branch = FilteredInstances.get(i).value(currNode.SplitAttribute) < currNode.SplitValue ? 0 : 1;
-            subsets[branch].add(batch.get(i));
-            intSubsets.get(branch).add(i);
+        for (int i = 0; i < leftSideBoolean.length; i++) {
+            if(FilteredInstances.get(i).value(currNode.SplitAttribute) < currNode.SplitValue){
+                leftSideBoolean[i] = true;
+                subsets[0].add(batch.get(i));
+            }else{
+                subsets[1].add(batch.get(i));
+            }
         }
 
 
-        //Going down the left side
-        traverseTreeBatch(currNode.Left,intSubsets.get(0).stream().mapToInt(Integer::intValue).toArray(), subsets[0],predictionsArray);
-        //Going down the right side
-        traverseTreeBatch(currNode.Right,intSubsets.get(1).stream().mapToInt(Integer::intValue).toArray(), subsets[1],predictionsArray);
+
+        //Splitting data into two subsets base on the filter value
+
+
+
+
+        //Clean up
+        FilteredInstances = null;
+
+        double[][] leftOut = null;
+        double[][] rightOut = null;
+
+        if(subsets[0].size() != 0){
+            //Process left side of tree
+            leftOut = traverseTreeBatch(currNode.Left,subsets[0]);
+        }
+
+        if(subsets[1].size() != 0){
+            //process right side of tree
+            rightOut = traverseTreeBatch(currNode.Right,subsets[1]);
+        }
+
+        int leftCount = 0;
+        int rightCount = 0;
+        //Merge the two arrays
+        for (int i = 0; i < leftSideBoolean.length; i++) {
+
+            //Merging arrays according to if they came from the left or right side of the tree
+            if(leftSideBoolean[i]){
+                assert leftOut != null;
+                outArr[i] = leftOut[leftCount];
+                leftCount ++;
+            }
+            else {
+                assert rightOut != null;
+                outArr[i] = rightOut[rightCount];
+                rightCount++;
+            }
+        }
+
+        return outArr;
     }*/
 
 
@@ -541,16 +597,8 @@ public class FilterTree extends RandomizableClassifier {
     @Override
     public double[] distributionForInstance(Instance instance) throws Exception {
 
-        //Getting the root node to start tree traversal
-        Node currNode = m_RootNode;
-
-        //If root is leaf node return prediction
-        if(currNode.NodeInfo instanceof LeafNodeInfo){
-            return ((LeafNodeInfo)currNode.NodeInfo).Prediction;
-        }
-
         //Traversing the tree
-        return traverseTreeInstance(currNode,instance);
+        return traverseTreeInstance(m_RootNode,instance);
     }
 
 
@@ -582,10 +630,17 @@ public class FilterTree extends RandomizableClassifier {
         filteredInstance = currentNodeFilter.output();
 
         if(filteredInstance.value(currNode.SplitAttribute) < currNode.SplitValue){
+            //Clean up
+            currentNodeFilter = null;
+            filteredInstance = null;
+
             //Traversing down left branch
             return traverseTreeInstance(currNode.Left,instance);
         }
         else{
+            currentNodeFilter = null;
+            filteredInstance = null;
+
             //Traversing down right branch
             return traverseTreeInstance(currNode.Right,instance);
         }
